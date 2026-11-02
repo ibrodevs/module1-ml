@@ -1,0 +1,30 @@
+{
+  "unweighted_logistic_default_threshold": {
+    "threshold": 0.5,
+    "accuracy": 0.952054794520548,
+    "precision_stroke": 1.0,
+    "recall_stroke": 0.02,
+    "f1_stroke": 0.0392156862745098,
+    "f2_stroke": 0.024875621890547265,
+    "roc_auc": 0.8417695473251029,
+    "average_precision": 0.27109116962152485,
+    "tn": 972,
+    "fp": 0,
+    "fn": 49,
+    "tp": 1
+  },
+  "class_weight_balanced_threshold_tuned": {
+    "threshold": 0.5444492921799549,
+    "accuracy": 0.7778864970645792,
+    "precision_stroke": 0.1556420233463035,
+    "recall_stroke": 0.8,
+    "f1_stroke": 0.26058631921824105,
+    "f2_stroke": 0.437636761487965,
+    "roc_auc": 0.8436419753086419,
+    "average_precision": 0.2684650271475106,
+    "tn": 755,
+    "fp": 217,
+    "fn": 10,
+    "tp": 40
+  }
+}

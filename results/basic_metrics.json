@@ -1,0 +1,15 @@
+{
+  "split": "stratified 80/20, random_state=42",
+  "threshold": 0.5,
+  "accuracy": 0.952054794520548,
+  "precision_stroke": 1.0,
+  "recall_stroke": 0.02,
+  "f1_stroke": 0.0392156862745098,
+  "f2_stroke": 0.024875621890547265,
+  "roc_auc": 0.8417695473251029,
+  "average_precision": 0.27109116962152485,
+  "tn": 972,
+  "fp": 0,
+  "fn": 49,
+  "tp": 1
+}
