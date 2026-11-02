@@ -13,7 +13,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, average_precision_score, confusion_matrix,
                              f1_score, fbeta_score, precision_score, recall_score,
-                             roc_auc_score)
+                             roc_auc_score, precision_recall_curve)
 from sklearn.model_selection import (StratifiedKFold, cross_val_predict,
                                      train_test_split)
 from sklearn.pipeline import Pipeline
@@ -66,9 +66,14 @@ def metric_dict(y, pred, scores):
 
 
 def choose_f2_threshold(y, scores):
-    thresholds = np.unique(np.r_[np.linspace(0.01, 0.99, 99), scores])
-    vals = [fbeta_score(y, scores >= t, beta=2, zero_division=0) for t in thresholds]
-    return float(thresholds[int(np.argmax(vals))])
+    """Select F2-maximizing threshold from training probabilities in O(n log n)."""
+    precision, recall, thresholds = precision_recall_curve(y, scores)
+    # Last precision/recall point has no threshold; avoid division by zero.
+    f2 = 5 * precision[:-1] * recall[:-1] / np.maximum(
+        4 * precision[:-1] + recall[:-1], 1e-15
+    )
+    return float(thresholds[int(np.argmax(f2))])
+
 
 
 def save(name, content):
@@ -101,21 +106,17 @@ def main(df):
                            class_weight="balanced", random_state=RANDOM_STATE, n_jobs=-1),
     }
     results = {}
+    oof_scores = {}
     for name, estimator in candidates.items():
         pipe = model_pipeline(Xtr, estimator)
         oof = cross_val_predict(pipe, Xtr, ytr, cv=cv, method="predict_proba", n_jobs=None)[:, 1]
         threshold = choose_f2_threshold(ytr.to_numpy(), oof)
+        oof_scores[name] = float(fbeta_score(ytr, oof >= threshold, beta=2, zero_division=0))
         pipe.fit(Xtr, ytr)
         prob = pipe.predict_proba(Xte)[:, 1]
         results[name] = {"threshold_selected_on_training_oof": threshold,
                          **metric_dict(yte, prob >= threshold, prob)}
     # The model is selected by training-only OOF F2, never by held-out test F2.
-    oof_scores = {}
-    for name, estimator in candidates.items():
-        pipe = model_pipeline(Xtr, estimator)
-        cv_prob = cross_val_predict(pipe, Xtr, ytr, cv=cv, method="predict_proba")[:, 1]
-        threshold = results[name]["threshold_selected_on_training_oof"]
-        oof_scores[name] = float(fbeta_score(ytr, cv_prob >= threshold, beta=2, zero_division=0))
     selected = max(oof_scores, key=oof_scores.get)
     winner = model_pipeline(Xtr, candidates[selected])
     winner.fit(Xtr, ytr)
