@@ -1,0 +1,44 @@
+name: Stroke project - tests and full analysis
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test-and-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+      - name: Run full analysis
+        run: python src/stroke_project.py --variant all
+      - name: Check output files and confusion matrix
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for name in ("eda_report", "basic_metrics", "main_metrics", "advanced_metrics", "model_selection"):
+              data = json.loads((Path("results") / f"{name}.json").read_text())
+              assert data, name
+          for name in ("basic_metrics",):
+              data = json.loads((Path("results") / f"{name}.json").read_text())
+              assert sum(data[key] for key in ("tn", "fp", "fn", "tp")) == 1022
+          assert (Path("results") / "subgroup_errors.csv").exists()
+          print("All generated files and checks passed")
+          PY
+      - name: Upload generated reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: stroke-analysis-reports
+          path: |
+            results/*.json
+            results/*.csv
