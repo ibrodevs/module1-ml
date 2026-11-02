@@ -19,6 +19,7 @@ from sklearn.model_selection import (StratifiedKFold, cross_val_predict,
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
+from analysis_utils import exploratory_report, subgroup_error_table, save_group_errors
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "healthcare-dataset-stroke-data.csv"
@@ -108,6 +109,23 @@ def main(df):
         prob = pipe.predict_proba(Xte)[:, 1]
         results[name] = {"threshold_selected_on_training_oof": threshold,
                          **metric_dict(yte, prob >= threshold, prob)}
+    # The model is selected by training-only OOF F2, never by held-out test F2.
+    oof_scores = {}
+    for name, estimator in candidates.items():
+        pipe = model_pipeline(Xtr, estimator)
+        cv_prob = cross_val_predict(pipe, Xtr, ytr, cv=cv, method="predict_proba")[:, 1]
+        threshold = results[name]["threshold_selected_on_training_oof"]
+        oof_scores[name] = float(fbeta_score(ytr, cv_prob >= threshold, beta=2, zero_division=0))
+    selected = max(oof_scores, key=oof_scores.get)
+    winner = model_pipeline(Xtr, candidates[selected])
+    winner.fit(Xtr, ytr)
+    decision = winner.predict_proba(Xte)[:, 1] >= results[selected]["threshold_selected_on_training_oof"]
+    audit = subgroup_error_table(Xte, yte, decision)
+    save_group_errors(audit, OUT / "subgroup_errors.csv")
+    save("model_selection.json", {"criterion": "training OOF F2", "oof_f2": oof_scores,
+                                  "selected_model": selected,
+                                  "threshold": results[selected]["threshold_selected_on_training_oof"],
+                                  "holdout_used_for_selection": False})
     save("main_metrics.json", results)
     print(json.dumps(results, indent=2, ensure_ascii=False))
 
@@ -129,6 +147,20 @@ def advanced(df):
         pipe.fit(Xtr, ytr)
         prob = pipe.predict_proba(Xte)[:, 1]
         results[name] = {"threshold": threshold, **metric_dict(yte, prob >= threshold, prob)}
+    # Additional controlled comparison: the same model, tuned threshold,
+    # with and without class weighting. Both thresholds are selected on train OOF.
+    for name, weight in [("unweighted_logistic_threshold_tuned", None),
+                         ("weighted_logistic_default_threshold", "balanced")]:
+        estimator = LogisticRegression(max_iter=2000, class_weight=weight, random_state=RANDOM_STATE)
+        pipe = model_pipeline(Xtr, estimator)
+        if name == "weighted_logistic_default_threshold":
+            threshold = 0.5
+        else:
+            oof = cross_val_predict(pipe, Xtr, ytr, cv=cv, method="predict_proba")[:, 1]
+            threshold = choose_f2_threshold(ytr.to_numpy(), oof)
+        pipe.fit(Xtr, ytr)
+        prob = pipe.predict_proba(Xte)[:, 1]
+        results[name] = {"threshold": threshold, **metric_dict(yte, prob >= threshold, prob)}
     save("advanced_metrics.json", results)
     print(json.dumps(results, indent=2, ensure_ascii=False))
 
@@ -139,6 +171,7 @@ def main_cli():
     args = parser.parse_args()
     warnings.filterwarnings("ignore", category=UserWarning)
     df = load_data()
+    save("eda_report.json", exploratory_report(df))
     for part in (["basic", "main", "advanced"] if args.variant == "all" else [args.variant]):
         {"basic": basic, "main": main, "advanced": advanced}[part](df)
 
